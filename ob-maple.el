@@ -62,6 +62,14 @@
 (require 'ob-comint)
 (require 'ob-eval)
 (require 'maplev)
+
+(add-to-list 'org-babel-load-languages '(maple . t))
+
+;; Associate "maple" with the relevant emacs mode, maplev-mode.
+(when (not (assoc "maple" org-src-lang-modes))
+  (push '("maple" . maplev) org-src-lang-modes))
+
+;; line:
 ;; possibly require modes required for your language
 
 ;; optionally define a file extension for this language
@@ -112,6 +120,7 @@
 This function is called by `org-babel-execute-src-block'"
   (message "executing Maple source code block")
   (let* ((processed-params (org-babel-process-params params))
+         (value "none") ; Joe: temporary to test
          ;; set the session if the value of the session keyword is not the
          ;; string `none'
          (session (unless (string= value "none")
