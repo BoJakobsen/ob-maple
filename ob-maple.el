@@ -1,11 +1,18 @@
-;;; ob-maple.el --- org-babel functions for maple evaluation
+;;; ob-maple.el --- org-babel functions for Maple evaluation  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2026 Joseph S. Riel
+;; Copyright (C) Joseph S. Riel
 
-;; Author: Joseh S Riel <joer@san.rr.com>
-;; Keywords: Maple, literate programming
-;; Homepage: https://github.com/JoeRiel/ob-maple.org
+;; Author: Joseph S. Riel
+;; Keywords: literate programming, Maple, Org Mode
 ;; Version: 0.01
+
+;; Author: Bo Jakobsen
+;; Keywords: literate programming, Maple, Org Mode
+;; Version: 0.01+epsilon (need code review)
+;; Implementing session mode, graphical output, and latex output
+;; Mostly done using Claude.ai
+
+
 
 ;;; License:
 
@@ -26,151 +33,321 @@
 
 ;;; Commentary:
 
-;; #+begin_src maplev
-
-;; test
-
-;; #+end_src
-
-;; Finally you can use `edebug' to instrumentalize
-;; `org-babel-expand-body:maple' and continue to evaluate the code
-;; block. You try to add header keywords and change the body of the
-;; code block and reevaluate the code block to observe how things get
-;; handled.
-;;
-;; If you have questions as to any of the portions of the file defined
-;; below please look to existing language support for guidance.
-;;
-;; If you are planning on adding a language to org-babel we would ask
-;; that if possible you fill out the FSF copyright assignment form
-;; available at https://orgmode.org/request-assign-future.txt as this
-;; will make it possible to include your language support in the core
-;; of Org-mode, otherwise unassigned language support files can still
-;; be included in the contrib/ directory of the Org-mode repository.
-
-
-;;; Requirements:
-
-;; Use this section to list the requirements of this language.  Most
-;; languages will require that at least the language be installed on
-;; the user's system, and the Emacs major mode relevant to the
-;; language be installed as well.
+;; This file provides some basic hooks to ...
 
 ;;; Code:
+
 (require 'ob)
 (require 'ob-ref)
 (require 'ob-comint)
 (require 'ob-eval)
+(require 'cl-lib)
 (require 'maplev)
 
-(add-to-list 'org-babel-load-languages '(maple . t))
+(declare-function maplev-config "maplev-config")
+(declare-function maplev--pmaple-process "maplev-pmaple")
+(declare-function maplev--pmaple-buffer "maplev-pmaple")
+(declare-function maplev-pmaple-direct "maplev-pmaple" (input &optional delete))
+(defvar maplev-config)
+(defvar maplev-pmaple-prompt)
 
-;; Associate "maple" with the relevant emacs mode, maplev-mode.
-(when (not (assoc "maple" org-src-lang-modes))
-  (push '("maple" . maplev) org-src-lang-modes))
-
-;; line:
-;; possibly require modes required for your language
-
-;; optionally define a file extension for this language
+(add-to-list 'org-src-lang-modes '("maple" . maplev))
 (add-to-list 'org-babel-tangle-lang-exts '("maple" . "mpl"))
 
-;; optionally declare default header arguments for this language
-(defvar org-babel-default-header-args:maple '())
+;; FIXME:  this does not belong here (nor does it work)
+;; (org-babel-do-load-languages
+;;  'org-babel-load-languages
+;;  '((maple . t)
+;;    (shell . t)
+;;    (emacs-lisp . t)))
 
-;; This function expands the body of a source code block by doing things like
-;; prepending argument definitions to the body, it should be called by the
-;; `org-babel-execute:maple' function below. Variables get concatenated in
-;; the `mapconcat' form, therefore to change the formatting you can edit the
-;; `format' form.
+(defcustom org-babel-maple-command
+  "maplemain -q -c 'interface(prettyprint=0)'"
+  "String used to execute Maple code."
+  :group 'org-babel
+  :group 'maplev
+  :type 'string)
 
-(defun org-babel-expand-body:maple (body params &optional processed-params)
-  "Expand BODY according to PARAMS, return the expanded body."
-  (require 'inf-maple nil t)
-  (let ((vars (org-babel--get-vars (or processed-params (org-babel-process-params params)))))
-    (concat
-     (mapconcat ;; define any variables
-      (lambda (pair)
-        (format "%s=%S"
-                (car pair) (org-babel-maple-var-to-maple (cdr pair))))
-      vars "\n")
-     "\n" body "\n")))
+(defcustom org-babel-maple-mode 'maplev-mode
+  "Mode for use in running maple interactively."
+  :group 'org-babel
+  :group 'maplev
+  :type 'symbol)
 
-;; This is the main function which is called to evaluate a code
-;; block.
-;;
-;; This function will evaluate the body of the source code and
-;; return the results as emacs-lisp depending on the value of the
-;; :results header argument
-;; - output means that the output to STDOUT will be captured and
-;;   returned
-;; - value means that the value of the last statement in the
-;;   source code block will be returned
-;;
-;; The most common first step in this function is the expansion of the
-;; PARAMS argument using `org-babel-process-params'.
-;;
-;; Please feel free to not implement options which aren't appropriate
-;; for your language (e.g. not all languages support interactive
-;; "session" evaluation).  Also you are free to define any new header
-;; arguments which you feel may be useful -- all header arguments
-;; specified by the user will be available in the PARAMS variable.
 (defun org-babel-execute:maple (body params)
   "Execute a block of Maple code with org-babel.
-This function is called by `org-babel-execute-src-block'"
-  (message "executing Maple source code block")
-  (let* ((processed-params (org-babel-process-params params))
-         (value "none") ; Joe: temporary to test
-         ;; set the session if the value of the session keyword is not the
-         ;; string `none'
-         (session (unless (string= value "none")
-                   (org-babel-maple-initiate-session
-                    (cdr (assq :session processed-params)))))
-         ;; variables assigned for use in the block
-         (vars (org-babel--get-vars processed-params))
-         (result-params (assq :result-params processed-params))
-         ;; either OUTPUT or VALUE which should behave as described above
-         (result-type (assq :result-type processed-params))
-         ;; expand the body with `org-babel-expand-body:maple'
-         (full-body (org-babel-expand-body:maple
-                     body params processed-params)))
-    ;; actually execute the source-code block either in a session or
-    ;; possibly by dropping it to a temporary file and evaluating the
-    ;; file.
-    ;;
-    ;; for session based evaluation the functions defined in
-    ;; `org-babel-comint' will probably be helpful.
-    ;;
-    ;; for external evaluation the functions defined in
-    ;; `org-babel-eval' will probably be helpful.
-    ;;
-    ;; when forming a shell command, or a fragment of code in some
-    ;; other language, please preprocess any file names involved with
-    ;; the function `org-babel-process-file-name'. (See the way that
-    ;; function is used in the language files)
-    ))
+This function is called by `org-babel-execute-src-block'.
+BODY is a string of the contents of the block.
+PARAMS is a list of cons-cells of the form \(:key . \"value\"\).
 
-;; This function should be used to assign any variables in params in
-;; the context of the session environment.
-(defun org-babel-prep-session:maple (session params)
-  "Prepare SESSION according to the header arguments specified in PARAMS."
-  )
+When the :session header argument names a session, the block is
+evaluated in a persistent pmaple REPL so that state (assignments,
+procedures, packages) carries across blocks.  Each distinct session
+name gets its own pmaple buffer and Maple process, so `:session a'
+and `:session b' are independent; a bare `:session' shares the
+interactive \\[pmaple] buffer.  Session evaluation currently captures
+printed output only; the :results header should be `output' (the
+`value' result-type is supported only for the non-session, one-shot
+evaluator).
+
+With `:results graphics file' and a `:file', the block's last value
+should be a plot (a `plot(...)' call or a plot structure); it is
+exported to FILE as a PNG and FILE is returned so Org inserts an
+image link.  Do NOT call `maplev:-Plot' in such a block -- that is
+for the interactive REPL and would open a viewer; just end the block
+with the plot itself (see `org-babel-maple--plot-export-string').
+
+With a `:latex' header (e.g. `:latex yes' or `:latex inline') the
+captured output is wrapped in LaTeX math delimiters so it renders as
+a fragment.  Combine it with `:results output drawer' so Org inserts
+the fragment inside a replaceable `:results:' drawer; then
+`org-latex-preview' (C-c C-x C-l) shows it inline.  (Avoid `raw' here:
+raw results have no delimiters, so re-running the block *appends*
+instead of replacing.)  See `org-babel-maple--maybe-latex'."
+  (let ((session (cdr (assoc :session params)))
+        (graphics-file (org-babel-maple--graphics-file params)))
+    (cond
+     ;; Graphics: write a PNG and return its filename for the image link.
+     (graphics-file
+      (if (or (null session) (string= "none" session))
+          (progn
+            (org-babel-eval
+             org-babel-maple-command
+             (org-babel-maple--graphics-body body params graphics-file))
+            graphics-file)
+        (org-babel-maple-evaluate-session-graphics
+         (org-babel-maple-initiate-session session params)
+         (org-babel-maple-expand-session-body body params)
+         graphics-file params)))
+     ;; Text result (possibly wrapped as a LaTeX fragment).
+     (t
+      (org-babel-maple--maybe-latex
+       (if (or (null session) (string= "none" session))
+           ;; One-shot evaluation: spawn a fresh Maple for this block.
+           (org-babel-eval org-babel-maple-command
+                           (org-babel-expand-body:maple body params))
+         ;; Session evaluation: reuse the maplev pmaple REPL.
+         (org-babel-maple-evaluate-session
+          (org-babel-maple-initiate-session session params)
+          (org-babel-maple-expand-session-body body params)))
+       params)))))
+
+(defun org-babel-maple--maybe-latex (result params)
+  "Wrap RESULT in LaTeX math delimiters when the `:latex' header asks for it.
+The `:latex' header value selects the delimiters: `inline' uses
+\\(...\\); any other non-empty value (e.g. `yes', `t', `display')
+uses display math \\[...\\].  A nil/`no'/`none' value, or an empty
+RESULT, leaves RESULT unchanged.
+
+This only marks the text as a LaTeX fragment; for it to render inline
+in the buffer use `:results output drawer' (Org inserts the fragment
+inside a `:results:' drawer, which is re-run replaceable and still
+previewable) and `org-latex-preview' / `org-toggle-latex-fragment'.
+Prefer `drawer' over `raw': a raw result has no delimiters, so
+re-evaluating the block appends instead of replacing.  In Maple,
+produce the body with `latex(expr);' (it prints the LaTeX)."
+  (let ((mode (cdr (assoc :latex params))))
+    (if (and mode
+             (not (member mode '("no" "nil" "none")))
+             result
+             (not (string-empty-p (string-trim result))))
+        (let ((tex (string-trim result)))
+          (if (string= mode "inline")
+              (concat "\\(" tex "\\)")
+            (concat "\\[" tex "\\]")))
+      result)))
+
+(defun org-babel-maple--graphics-file (params)
+  "Return the :file value when PARAMS request a graphics/file result, else nil.
+A block with `:results graphics file :file foo.png' has both \"file\"
+in its result-params and a `:file' header; that is the signal to
+export a plot rather than capture text."
+  (let ((file (cdr (assoc :file params)))
+        (result-params (cdr (assoc :result-params params))))
+    (when (and file (member "file" result-params))
+      file)))
+
+(defun org-babel-maple--plot-export-string (file params)
+  "Return Maple code exporting the last computed value (a plot) to FILE.
+FILE is expanded to an absolute path for Maple; the leading `%' is
+Maple's ditto operator (the value of the previous top-level result),
+so the user's block must end with the plot.  Height and width come
+from the `:height'/`:width' headers (defaults 400/600).  Uses the
+top-level `Export' command, which writes the PNG without opening a
+viewer (unlike `maplev:-Plot')."
+  (format
+   (concat "_obmaple_plt := %%:\n"
+           "Export(%S, _obmaple_plt, ':-format' = \"png\""
+           ", ':-height' = %s, ':-width' = %s, ':-legacy' = false):\n")
+   (expand-file-name file)
+   (or (cdr (assoc :height params)) 400)
+   (or (cdr (assoc :width params)) 600)))
+
+(defun org-babel-maple--graphics-body (body params file)
+  "Wrap BODY so its last value is exported to FILE as a PNG.
+Used by the one-shot (non-session) path; PARAMS supplies any
+variable assignments and the plot dimensions."
+  (concat (org-babel-variable-assignments:maple params) "\n"
+          body "\n"
+          (org-babel-maple--plot-export-string file params)))
+
+(defun org-babel-maple--session-buffer-name (session)
+  "Return the pmaple buffer name to use for SESSION.
+SESSION is the :session header value.  A bare `:session' (org
+passes \"\" or \"yes\") shares the base buffer used by \\[pmaple],
+preserving the milestone-1 behavior.  Every explicit session name
+gets its own dedicated buffer, derived by tagging the base name,
+so `:session a' and `:session b' map to independent buffers (and
+hence independent Maple processes).
+
+The base name comes from `maplev--pmaple-buffer', so a maplev-config
+must already be assigned when this is called."
+  (let ((base (maplev--pmaple-buffer)))         ; "Maple (<maple>)"
+    (if (or (null session) (member session '("" "yes")))
+        base
+      ;; Insert " [SESSION]" right after the leading "Maple", keeping the
+      ;; " (<maple>)" suffix so the name still identifies the binary.
+      (if (string-prefix-p "Maple" base)
+          (concat "Maple [" session "]" (substring base (length "Maple")))
+        (concat base " [" session "]")))))
+
+(defmacro org-babel-maple--with-session-buffer (bufname &rest body)
+  "Evaluate BODY with `maplev--pmaple-buffer' overridden to return BUFNAME.
+The maplev pmaple machinery (process lookup in `maplev--pmaple-process',
+startup in `maplev-pmaple--start-process', the `maplev:-Setup' argument
+built by `maplev-pmaple--get-pmaple-and-options', and `maplev-pmaple-direct')
+all consult `maplev--pmaple-buffer' for the target buffer name.  Rebinding
+it for the dynamic extent of BODY lets us host several named sessions on
+top of the existing single-buffer machinery without editing the maplev
+source tree."
+  (declare (indent 1) (debug (form body)))
+  (let ((name (make-symbol "name")))
+    `(let ((,name ,bufname))
+       (cl-letf (((symbol-function 'maplev--pmaple-buffer)
+                  (lambda () ,name)))
+         ,@body))))
+
+(defun org-babel-maple-initiate-session (&optional session _params)
+  "Return the buffer of a live pmaple session, starting one if needed.
+SESSION is the value of the :session header argument; nil or the
+string \"none\" means no session.  Distinct session names map to
+distinct pmaple buffers and Maple processes (see
+`org-babel-maple--session-buffer-name'); a bare `:session' shares the
+interactive \\[pmaple] / `maplev-pmaple-pop-to-buffer' buffer.
+
+The session reuses the maplev pmaple machinery via
+`org-babel-maple--with-session-buffer'."
+  (unless (or (null session)
+              (and (stringp session) (string= session "none")))
+    ;; A maplev-config is required so the pmaple buffer is named and
+    ;; configured consistently; inherit it from `maplev-config-default'.
+    (unless maplev-config (maplev-config))
+    (let ((bufname (org-babel-maple--session-buffer-name session)))
+      (org-babel-maple--with-session-buffer bufname
+        (let ((buffer (process-buffer (maplev--pmaple-process))))
+          ;; Wait until Maple has finished booting and is sitting at a
+          ;; fresh prompt.  Otherwise the boot prompts land inside the
+          ;; first `maplev-pmaple-direct' capture region, desynchronizing
+          ;; output.
+          (org-babel-maple--wait-for-prompt buffer)
+          buffer)))))
+
+(defun org-babel-maple--wait-for-prompt (buffer &optional timeout)
+  "Block until the pmaple process in BUFFER is idle at a fresh prompt.
+Give up after TIMEOUT seconds (default 30)."
+  (with-current-buffer buffer
+    (let ((proc (get-buffer-process buffer))
+          (deadline (+ (float-time) (or timeout 30))))
+      (while (and proc
+                  (process-live-p proc)
+                  (< (float-time) deadline)
+                  (not (save-excursion
+                         (goto-char (point-max))
+                         (looking-back (regexp-quote maplev-pmaple-prompt)
+                                       (max (point-min)
+                                            (- (point) (1+ (length maplev-pmaple-prompt))))))))
+        (accept-process-output proc 0.05)))))
+
+(defun org-babel-maple-expand-session-body (body params)
+  "Expand BODY for session evaluation, prepending variable assignments.
+PARAMS is the src-block header alist.  Unlike
+`org-babel-expand-body:maple', this never wraps BODY in the
+`value' result-type redirection, since sessions capture printed
+output."
+  (concat (org-babel-variable-assignments:maple params) "\n" body))
+
+(defun org-babel-maple-evaluate-session (buffer body)
+  "Send BODY to the pmaple session BUFFER and return cleaned output.
+`maplev-pmaple-direct' looks up its target buffer and process through
+`maplev--pmaple-buffer', so override it to BUFFER's name for the call;
+otherwise a named session would be sent to the base pmaple buffer."
+  (org-babel-maple--with-session-buffer (buffer-name buffer)
+    (with-current-buffer buffer
+      (org-babel-maple--clean-output (maplev-pmaple-direct body)))))
+
+(defun org-babel-maple-evaluate-session-graphics (buffer body file params)
+  "Run BODY in session BUFFER, export its last plot to FILE, return FILE.
+BODY is sent first (its last value becomes Maple's `%'), then a second
+send exports that value to FILE via `org-babel-maple--plot-export-string'.
+FILE (the raw :file header) is returned so Org inserts an image link;
+PARAMS supplies the plot dimensions."
+  (org-babel-maple--with-session-buffer (buffer-name buffer)
+    (with-current-buffer buffer
+      (maplev-pmaple-direct body)
+      (maplev-pmaple-direct (org-babel-maple--plot-export-string file params))))
+  file)
+
+(defun org-babel-maple--clean-output (output)
+  "Return OUTPUT stripped of pmaple prompts, ANSI codes, and stray CRs.
+`maplev-pmaple-direct' normally returns clean text already; this is
+defensive so the result is well-formed under an interactive PTY too."
+  (when output
+    (with-temp-buffer
+      (insert output)
+      (goto-char (point-min))
+      (while (re-search-forward "\e\\[[0-9;]*m" nil t) (replace-match ""))
+      (goto-char (point-min))
+      (while (re-search-forward "\r+" nil t) (replace-match ""))
+      (goto-char (point-min))
+      (while (re-search-forward (concat "^" (regexp-quote maplev-pmaple-prompt)) nil t)
+        (replace-match ""))
+      (string-trim (buffer-string)))))
+
+(defun org-babel-expand-body:maple (body params)
+  "Expand BODY according to PARAMS, return the expanded body."
+  (let ((body (concat
+               (org-babel-variable-assignments:maple params)
+               "\n" body "\n")))
+    (if (eq 'value (cdr (assoc :result-type params)))
+        (setq body (concat
+		    "try\n"
+                    "    writeto(\"babel.out\"):\n"
+                    body
+		    "_val := %:\n"
+		    "catch:\n"
+		    "    _val := StringTools:-FormatMessage(lastexception[2..-1]);\n"
+		    "finally\n"
+                    "    writeto('terminal'):\n"
+		    "end try;\n"
+                    "_val;")))
+    body))
 
 (defun org-babel-maple-var-to-maple (var)
-  "Convert an elisp var into a string of maple source code
-specifying a var of the same value."
-  (format "%S" var))
+  "Convert VAR to a Maple expression."
+  (if (listp var)
+      (concat "[" (mapconcat #'org-babel-maple-var-to-maple var ", ") "]")
+    (format "%S" (if (stringp var) (substring-no-properties var) var))))
 
-(defun org-babel-maple-table-or-string (results)
-  "If the results look like a table, then convert them into an
-Emacs-lisp table, otherwise return the results as a string."
-  )
-
-(defun org-babel-maple-initiate-session (&optional session)
-  "If there is not a current inferior-process-buffer in SESSION then create.
-Return the initialized session."
-  (unless (string= session "none")
-    ))
+(defun org-babel-variable-assignments:maple (params)
+  "Return a string of Maple statements assigning the header variables."
+  "\n")
+  ;; (mapconcat
+  ;;  (lambda (param)
+  ;;    (format "%s := %s;"
+  ;;            (cadr param)
+  ;;            (org-babel-maple-var-to-maple (cddr param))))
+  ;;  (org-babel-get-header params :var)
+  ;;  "\n"))
 
 (provide 'ob-maple)
 ;;; ob-maple.el ends here
