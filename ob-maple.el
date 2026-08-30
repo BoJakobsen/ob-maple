@@ -1,18 +1,13 @@
 ;;; ob-maple.el --- org-babel functions for Maple evaluation  -*- lexical-binding: t; -*-
 
-;; Copyright (C) Joseph S. Riel
+;; Copyright (C) 2026 Joseph S. Riel
 
-;; Author: Joseph S. Riel
-;; Keywords: literate programming, Maple, Org Mode
-;; Version: 0.01
-
-;; Author: Bo Jakobsen
-;; Keywords: literate programming, Maple, Org Mode
-;; Version: 0.01+epsilon (need code review)
-;; Implementing session mode, graphical output, and latex output
-;; Mostly done using Claude.ai
-
-
+;; Author: Joseph S. Riel <joer@san.rr.com>
+;;         Bo Jakobsen <boj@boj.dk>
+;; Keywords: languages, tools
+;; Version: 1.0.0
+;; Package-Requires: ((maplev "3.1"))
+;; URL: https://github.com/JoeRiel/ob-maple
 
 ;;; License:
 
@@ -33,7 +28,8 @@
 
 ;;; Commentary:
 
-;; This file provides some basic hooks to ...
+;; This file provides some basic hooks to interact with Maple
+;; in an org file.
 
 ;;; Code:
 
@@ -42,7 +38,7 @@
 (require 'ob-comint)
 (require 'ob-eval)
 (require 'cl-lib)
-(require 'maplev)
+;; (require 'maplev)
 
 (declare-function maplev-config "maplev-config")
 (declare-function maplev--pmaple-process "maplev-pmaple")
@@ -135,7 +131,7 @@ instead of replacing.)  See `org-babel-maple--maybe-latex'."
 (defun org-babel-maple--maybe-latex (result params)
   "Wrap RESULT in LaTeX math delimiters when the `:latex' header asks for it.
 The `:latex' header value selects the delimiters: `inline' uses
-\\(...\\); any other non-empty value (e.g. `yes', `t', `display')
+\\(...\\); any other non-empty value (e.g. `yes', t, `display')
 uses display math \\[...\\].  A nil/`no'/`none' value, or an empty
 RESULT, leaves RESULT unchanged.
 
@@ -338,16 +334,23 @@ defensive so the result is well-formed under an interactive PTY too."
       (concat "[" (mapconcat #'org-babel-maple-var-to-maple var ", ") "]")
     (format "%S" (if (stringp var) (substring-no-properties var) var))))
 
+(defun org-babel-variable-assignment:maple (param)
+  "Return a string of a Maple assignment to a variable.
+When PARAM has the form `(:var VAR . VALUE)', the string `VAR := VALUE'
+is returned."
+  (if (eq (car param) :var)
+      (format "%s := %s;"
+              (cadr param)
+              (org-babel-maple-var-to-maple (cddr param)))))
+
 (defun org-babel-variable-assignments:maple (params)
-  "Return a string of Maple statements assigning the header variables."
-  "\n")
-  ;; (mapconcat
-  ;;  (lambda (param)
-  ;;    (format "%s := %s;"
-  ;;            (cadr param)
-  ;;            (org-babel-maple-var-to-maple (cddr param))))
-  ;;  (org-babel-get-header params :var)
-  ;;  "\n"))
+  "Return a string of Maple statements assigning the header variables.
+Elements of PARAMS with the format `(:var VAR . VALUE)' are
+converted to Maple assignments `VAR := VALUE'."
+  (mapconcat
+   #'org-babel-variable-assignment:maple
+   params "\n"))
 
 (provide 'ob-maple)
+
 ;;; ob-maple.el ends here
