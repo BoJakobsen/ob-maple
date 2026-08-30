@@ -130,10 +130,10 @@ instead of replacing.)  See `org-babel-maple--maybe-latex'."
 
 (defun org-babel-maple--maybe-latex (result params)
   "Wrap RESULT in LaTeX math delimiters when the `:latex' header asks for it.
-The `:latex' header value selects the delimiters: `inline' uses
-\\(...\\); any other non-empty value (e.g. `yes', t, `display')
-uses display math \\[...\\].  A nil/`no'/`none' value, or an empty
-RESULT, leaves RESULT unchanged.
+PARAMS is an alist that may contain the `:latex' header, which selects
+the delimiters: `inline' uses \\(...\\); any other non-empty
+value (e.g. `yes', t, `display') uses display math \\[...\\].  A
+nil/`no'/`none' value, or an empty RESULT, leaves RESULT unchanged.
 
 This only marks the text as a LaTeX fragment; for it to render inline
 in the buffer use `:results output drawer' (Org inserts the fragment
@@ -165,12 +165,17 @@ export a plot rather than capture text."
 
 (defun org-babel-maple--plot-export-string (file params)
   "Return Maple code exporting the last computed value (a plot) to FILE.
+
 FILE is expanded to an absolute path for Maple; the leading `%' is
-Maple's ditto operator (the value of the previous top-level result),
-so the user's block must end with the plot.  Height and width come
-from the `:height'/`:width' headers (defaults 400/600).  Uses the
-top-level `Export' command, which writes the PNG without opening a
-viewer (unlike `maplev:-Plot')."
+Maple's ditto operator (the value of the previous top-level result), so
+the user's block must end with the plot.
+
+PARAMS is an alist which may contain the plot dimensions in pixels:
+`:height' (default is 400) and `:width' (default is 600).
+
+This uses the top-level `Export' command, which writes the PNG without
+opening a viewer (unlike `maplev:-Plot')."
+
   (format
    (concat "_obmaple_plt := %%:\n"
            "Export(%S, _obmaple_plt, ':-format' = \"png\""
@@ -294,7 +299,7 @@ PARAMS supplies the plot dimensions."
   file)
 
 (defun org-babel-maple--clean-output (output)
-  "Return OUTPUT stripped of pmaple prompts, ANSI codes, and stray CRs.
+  "Return OUTPUT stripped of pmaple prompt strings, ANSI codes, and stray CRs.
 `maplev-pmaple-direct' normally returns clean text already; this is
 defensive so the result is well-formed under an interactive PTY too."
   (when output
