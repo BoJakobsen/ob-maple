@@ -6,7 +6,7 @@
 ;;         Bo Jakobsen <boj@boj.dk>
 ;; Keywords: languages, tools
 ;; Version: 1.0.0
-;; Package-Requires: ((maplev "3.1"))
+;; Package-Requires: ((maplev "3.2.0"))
 ;; URL: https://github.com/JoeRiel/ob-maple
 
 ;;; License:
@@ -47,7 +47,10 @@
 (defvar maplev-config)
 (defvar maplev-pmaple-prompt)
 
+(defvar org-src-lang-modes)
 (add-to-list 'org-src-lang-modes '("maple" . maplev))
+
+(defvar org-babel-tangle-lang-exts)
 (add-to-list 'org-babel-tangle-lang-exts '("maple" . "mpl"))
 
 ;; FIXME:  this does not belong here (nor does it work)
