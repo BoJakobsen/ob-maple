@@ -41,7 +41,6 @@
 ;; (require 'maplev)
 
 (declare-function maplev-config "maplev-config")
-(declare-function maplev--pmaple-process "maplev-pmaple")
 (declare-function maplev--pmaple-buffer "maplev-pmaple")
 (declare-function maplev--pmaple-process "maplev-pmaple")
 (declare-function maplev-pmaple-direct "maplev-pmaple" (input &optional delete))
@@ -56,8 +55,9 @@
 (add-to-list 'org-babel-tangle-lang-exts '("maple" . "mpl"))
 
 (defcustom org-babel-maple-command
-  "maplemain -q -c 'interface(prettyprint=0)'"
-  "String used to execute Maple code."
+  "maple -q -B -c 'interface(prettyprint=0)'"
+  "String used to execute Maple code.
+The command (maple) should be the installed name of command-line Maple."
   :group 'org-babel
   :group 'maplev
   :type 'string)
