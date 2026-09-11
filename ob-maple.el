@@ -43,7 +43,9 @@
 (declare-function maplev-config "maplev-config")
 (declare-function maplev--pmaple-process "maplev-pmaple")
 (declare-function maplev--pmaple-buffer "maplev-pmaple")
+(declare-function maplev--pmaple-process "maplev-pmaple")
 (declare-function maplev-pmaple-direct "maplev-pmaple" (input &optional delete))
+
 (defvar maplev-config)
 (defvar maplev-pmaple-prompt)
 
@@ -53,13 +55,6 @@
 (defvar org-babel-tangle-lang-exts)
 (add-to-list 'org-babel-tangle-lang-exts '("maple" . "mpl"))
 
-;; FIXME:  this does not belong here (nor does it work)
-;; (org-babel-do-load-languages
-;;  'org-babel-load-languages
-;;  '((maple . t)
-;;    (shell . t)
-;;    (emacs-lisp . t)))
-
 (defcustom org-babel-maple-command
   "maplemain -q -c 'interface(prettyprint=0)'"
   "String used to execute Maple code."
@@ -68,7 +63,7 @@
   :type 'string)
 
 (defcustom org-babel-maple-mode 'maplev-mode
-  "Mode for use in running maple interactively."
+  "Mode for use in running Maple interactively."
   :group 'org-babel
   :group 'maplev
   :type 'symbol)
@@ -80,14 +75,14 @@ BODY is a string of the contents of the block.
 PARAMS is a list of cons-cells of the form \(:key . \"value\"\).
 
 When the :session header argument names a session, the block is
-evaluated in a persistent pmaple REPL so that state (assignments,
-procedures, packages) carries across blocks.  Each distinct session
-name gets its own pmaple buffer and Maple process, so `:session a'
-and `:session b' are independent; a bare `:session' shares the
-interactive \\[pmaple] buffer.  Session evaluation currently captures
-printed output only; the :results header should be `output' (the
-`value' result-type is supported only for the non-session, one-shot
-evaluator).
+evaluated in a persistent pmaple REPL (Read-Eval-Print-Loop) so that
+state (assignments, procedures, packages) carries across blocks.  Each
+distinct session name gets its own pmaple buffer and Maple process, so
+`:session a' and `:session b' are independent; a bare `:session' shares
+the interactive \\[pmaple] buffer.  Session evaluation currently
+captures printed output only; the :results header should be
+`output' (the `value' result-type is supported only for the non-session,
+one-shot evaluator).
 
 With `:results graphics file' and a `:file', the block's last value
 should be a plot (a `plot(...)' call or a plot structure); it is
@@ -109,14 +104,15 @@ instead of replacing.)  See `org-babel-maple--maybe-latex'."
      ;; Graphics: write a PNG and return its filename for the image link.
      (graphics-file
       (if (or (null session) (string= "none" session))
+          ;; One-shot evaluation: span a fresh Maple for this block.
           (progn
             (org-babel-eval
              org-babel-maple-command
              (org-babel-maple--graphics-body body params graphics-file))
             graphics-file)
-        (org-babel-maple-evaluate-session-graphics
-         (org-babel-maple-initiate-session session params)
-         (org-babel-maple-expand-session-body body params)
+        (org-babel-maple--evaluate-session-graphics
+         (org-babel-maple--get-session-buffer session)
+         (org-babel-maple--expand-session-body body params)
          graphics-file params)))
      ;; Text result (possibly wrapped as a LaTeX fragment).
      (t
@@ -126,9 +122,9 @@ instead of replacing.)  See `org-babel-maple--maybe-latex'."
            (org-babel-eval org-babel-maple-command
                            (org-babel-expand-body:maple body params))
          ;; Session evaluation: reuse the maplev pmaple REPL.
-         (org-babel-maple-evaluate-session
-          (org-babel-maple-initiate-session session params)
-          (org-babel-maple-expand-session-body body params)))
+         (org-babel-maple--evaluate-session
+          (org-babel-maple--get-session-buffer session)
+          (org-babel-maple--expand-session-body body params)))
        params)))))
 
 (defun org-babel-maple--maybe-latex (result params)
@@ -231,7 +227,7 @@ source tree."
                   (lambda () ,name)))
          ,@body))))
 
-(defun org-babel-maple-initiate-session (&optional session _params)
+(defun org-babel-maple--get-session-buffer (&optional session)
   "Return the buffer of a live pmaple session, starting one if needed.
 SESSION is the value of the :session header argument; nil or the
 string \"none\" means no session.  Distinct session names map to
@@ -247,6 +243,7 @@ The session reuses the maplev pmaple machinery via
     ;; configured consistently; inherit it from `maplev-config-default'.
     (unless maplev-config (maplev-config))
     (let ((bufname (org-babel-maple--session-buffer-name session)))
+      (org-babel-maple--add-session-to-alist session bufname)
       (org-babel-maple--with-session-buffer bufname
         (let ((buffer (process-buffer (maplev--pmaple-process))))
           ;; Wait until Maple has finished booting and is sitting at a
@@ -272,7 +269,7 @@ Give up after TIMEOUT seconds (default 30)."
                                             (- (point) (1+ (length maplev-pmaple-prompt))))))))
         (accept-process-output proc 0.05)))))
 
-(defun org-babel-maple-expand-session-body (body params)
+(defun org-babel-maple--expand-session-body (body params)
   "Expand BODY for session evaluation, prepending variable assignments.
 PARAMS is the src-block header alist.  Unlike
 `org-babel-expand-body:maple', this never wraps BODY in the
@@ -280,7 +277,7 @@ PARAMS is the src-block header alist.  Unlike
 output."
   (concat (org-babel-variable-assignments:maple params) "\n" body))
 
-(defun org-babel-maple-evaluate-session (buffer body)
+(defun org-babel-maple--evaluate-session (buffer body)
   "Send BODY to the pmaple session BUFFER and return cleaned output.
 `maplev-pmaple-direct' looks up its target buffer and process through
 `maplev--pmaple-buffer', so override it to BUFFER's name for the call;
@@ -289,7 +286,7 @@ otherwise a named session would be sent to the base pmaple buffer."
     (with-current-buffer buffer
       (org-babel-maple--clean-output (maplev-pmaple-direct body)))))
 
-(defun org-babel-maple-evaluate-session-graphics (buffer body file params)
+(defun org-babel-maple--evaluate-session-graphics (buffer body file params)
   "Run BODY in session BUFFER, export its last plot to FILE, return FILE.
 BODY is sent first (its last value becomes Maple's `%'), then a second
 send exports that value to FILE via `org-babel-maple--plot-export-string'.
@@ -336,10 +333,10 @@ defensive so the result is well-formed under an interactive PTY too."
                     "_val;")))
     body))
 
-(defun org-babel-maple-var-to-maple (var)
+(defun org-babel-maple--var-to-maple (var)
   "Convert VAR to a Maple expression."
   (if (listp var)
-      (concat "[" (mapconcat #'org-babel-maple-var-to-maple var ", ") "]")
+      (concat "[" (mapconcat #'org-babel-maple--var-to-maple var ", ") "]")
     (format "%S" (if (stringp var) (substring-no-properties var) var))))
 
 (defun org-babel-variable-assignment:maple (param)
@@ -349,15 +346,57 @@ is returned."
   (if (eq (car param) :var)
       (format "%s := %s;"
               (cadr param)
-              (org-babel-maple-var-to-maple (cddr param)))))
+              (org-babel-maple--var-to-maple (cddr param)))))
 
 (defun org-babel-variable-assignments:maple (params)
   "Return a string of Maple statements assigning the header variables.
-Elements of PARAMS with the format `(:var VAR . VALUE)' are
+Elements of PARAMS with the format \(:var VAR . VALUE\) are
 converted to Maple assignments `VAR := VALUE'."
   (mapconcat
    #'org-babel-variable-assignment:maple
    params "\n"))
+
+;; session functions
+
+(defvar org-babel-maple--session-alist nil
+  "Association list mapping session to pmaple buffer.")
+
+(defun org-babel-maple--add-session-to-alist (session bufname)
+  "Add \(SESSION . BUFNAME\) to `org-babel-maple--session-alist' and return BUFNAME.
+If BUFNAME is nil, remove it from the alist."
+  (setf (alist-get session org-babel-maple--session-alist nil 'remove #'equal) bufname))
+
+(defun org-babel-maple--get-sessions ()
+  "Return the list of sessions in `org-babel-maple--session-alist'."
+  (mapcar #'car org-babel-maple--session-alist))
+
+(defun org-babel-maple--kill-session (session)
+  "Kill SESSION, along with its assocated process and buffer.
+Query for SESSION."
+  (interactive (list (completing-read "Choose session: " (org-babel-maple--get-sessions)
+                                      nil t
+                                      (caar org-babel-maple--session-alist))))
+  (let ((bufname (cdr (assoc session org-babel-maple--session-alist))))
+    (when bufname
+      (let ((kill-buffer-query-functions nil)) ; prevent query when killing the buffer and process
+        (kill-buffer bufname)
+        (setq org-babel-maple--session-alist (assoc-delete-all session org-babel-maple--session-alist))))))
+
+(defun org-babel-maple--kill-all-sessions ()
+  "Kill all sessions."
+  (interactive)
+  (dolist (element org-babel-maple--session-alist)
+    (org-babel-maple--kill-session (car element))))
+
+;; Bind a few keys
+
+;; These work, but not sure the choices.  They don't conflict with the
+;; standard org-babel-map.  I'd rather bind k to
+;; org-babel-maple--kill-session (k means kill one, K means kill all)
+;; but currently k is bound to org-babel-remove-result-one-or-many.
+
+(define-key org-babel-map (kbd "S") 'org-babel-maple--kill-session)
+(define-key org-babel-map (kbd "K") 'org-babel-maple--kill-all-sessions)
 
 (provide 'ob-maple)
 
