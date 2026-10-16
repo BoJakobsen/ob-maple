@@ -53,11 +53,11 @@ Documentation
 -------------
 Session and non-session evaluation is allows, graphics and LaTeX output supported.
 
-See: <doc/demo.org> for a demonstration of most features.
+See: [doc/demo.org](doc/demo.org) for a demonstration of most features.
 
 Resources
 ---------
 
-[1] <https://orgmode.org/worg/org-contrib/babel/index.html> 
-[2] <https://maplesoft.com/> 
-[3] <https://github/JoeRiel/maplev/> 
+[1] https://orgmode.org/worg/org-contrib/babel/index.html  
+[2] https://maplesoft.com/  
+[3] https://github/JoeRiel/maplev/
