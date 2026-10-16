@@ -4,7 +4,7 @@
 #+title: Maple tests
 #+filetags: :emacs:
 #+date: [2026-05-30 Sat]
-#+last_modified: [2026-06-13 Sat 23:37]
+#+last_modified: [2026-10-16 Fri 13:30]
 
 Demo for Maple org support.
 
@@ -21,7 +21,7 @@ p := 10;
 : p := 10
 
 #+begin_src maple :session foo :results output
-q := p^q2;   # remembers p from the previous block
+q := p^2;   # remembers p from the previous block
 #+end_src
 
 #+RESULTS:
