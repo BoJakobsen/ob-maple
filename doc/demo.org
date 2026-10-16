@@ -4,7 +4,7 @@
 #+title: Maple tests
 #+filetags: :emacs:
 #+date: [2026-05-30 Sat]
-#+last_modified: [2026-10-16 Fri 13:30]
+#+last_modified: [2026-10-16 Fri 13:46]
 
 Demo for Maple org support.
 
@@ -25,8 +25,7 @@ q := p^2;   # remembers p from the previous block
 #+end_src
 
 #+RESULTS:
-: q2
-:                                    q := 10
+: q := 100
 
 #+begin_src maple :results value
 p := 3;
@@ -52,12 +51,11 @@ maplev:-Plot(sin(x), x = 0..2*Pi):
 Last command in block needs to be the plot (or a variable contain a plot).
 
 #+begin_src maple :session plt :results graphics file :file sine.png :width 200 :height 100
-(plot)(sin(3*x), x = 0..2*Pi):
+plot(sin(3*x), x = 0..2*Pi):
 #+end_src
 
 #+RESULTS:
 [[file:sine.png]]
-
 
 #+begin_src maple :results graphics file :file sine2.png
 plt := plot(sin(2*x), x = 0..2*Pi):

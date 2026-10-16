@@ -9,8 +9,9 @@
   :ensure t
   :after org
   :config
-  (setq org-babel-maple-command
-        "/opt/maple2026/bin/maple -q -c 'interface(prettyprint=0)'")
+  (add-to-list 'org-babel-load-languages '(maple . t))
+  ;(setq org-babel-maple-command
+  ;      "/opt/maple2026/bin/maple -q -c 'interface(prettyprint=0)'")
   ;; Some keys which might be usefull
   ;;(keymap-set org-babel-map "S" #'org-babel-maple-kill-session)
   ;;(keymap-set org-babel-map "K" #'org-babel-maple-kill-all-sessions)
