@@ -370,7 +370,7 @@ If BUFNAME is nil, remove it from the alist."
   "Return the list of sessions in `org-babel-maple--session-alist'."
   (mapcar #'car org-babel-maple--session-alist))
 
-(defun org-babel-maple--kill-session (session)
+(defun org-babel-maple-kill-session (session)
   "Kill SESSION, along with its assocated process and buffer.
 Query for SESSION."
   (interactive (list (completing-read "Choose session: " (org-babel-maple--get-sessions)
@@ -382,21 +382,11 @@ Query for SESSION."
         (kill-buffer bufname)
         (setq org-babel-maple--session-alist (assoc-delete-all session org-babel-maple--session-alist))))))
 
-(defun org-babel-maple--kill-all-sessions ()
+(defun org-babel-maple-kill-all-sessions ()
   "Kill all sessions."
   (interactive)
   (dolist (element org-babel-maple--session-alist)
-    (org-babel-maple--kill-session (car element))))
-
-;; Bind a few keys
-
-;; These work, but not sure the choices.  They don't conflict with the
-;; standard org-babel-map.  I'd rather bind k to
-;; org-babel-maple--kill-session (k means kill one, K means kill all)
-;; but currently k is bound to org-babel-remove-result-one-or-many.
-
-(define-key org-babel-map (kbd "S") 'org-babel-maple--kill-session)
-(define-key org-babel-map (kbd "K") 'org-babel-maple--kill-all-sessions)
+    (org-babel-maple-kill-session (car element))))
 
 (provide 'ob-maple)
 
