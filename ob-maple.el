@@ -54,13 +54,41 @@
 (defvar org-babel-tangle-lang-exts)
 (add-to-list 'org-babel-tangle-lang-exts '("maple" . "mpl"))
 
-(defcustom org-babel-maple-command
-  "maple -q -B -c 'interface(prettyprint=0)'"
-  "String used to execute Maple code.
-The command (maple) should be the installed name of command-line Maple."
+(defcustom org-babel-maple-command nil
+  "Shell command used for one-shot (non-session) Maple evaluation.
+When nil (the default), the command is built by
+`org-babel-maple--command' from the `:maple' slot of
+`maplev-config-default' (the same executable session evaluation
+uses), falling back to \"maple\" on the PATH, followed by
+`org-babel-maple-command-options'.  Set this to a string to use an
+explicit command instead."
+  :group 'org-babel
+  :group 'maplev
+  :type '(choice (const :tag "From maplev-config-default" nil)
+                 (string :tag "Command")))
+
+(defcustom org-babel-maple-command-options
+  "-q -B -c 'interface(prettyprint=0)'"
+  "Options appended to the Maple executable for one-shot evaluation.
+Used only when `org-babel-maple-command' is nil.  `prettyprint=0'
+makes Maple print 1D output, which is what Org expects in results."
   :group 'org-babel
   :group 'maplev
   :type 'string)
+
+(defvar maplev-config-default)
+
+(defun org-babel-maple--command ()
+  "Return the shell command for one-shot Maple evaluation.
+See `org-babel-maple-command'."
+  (or org-babel-maple-command
+      (let ((maple (or (and (boundp 'maplev-config-default)
+                            maplev-config-default
+                            (ignore-errors
+                              (eieio-oref maplev-config-default 'maple)))
+                       "maple")))
+        (concat (shell-quote-argument maple) " "
+                org-babel-maple-command-options))))
 
 (defcustom org-babel-maple-mode 'maplev-mode
   "Mode for use in running Maple interactively."
@@ -107,7 +135,7 @@ instead of replacing.)  See `org-babel-maple--maybe-latex'."
           ;; One-shot evaluation: span a fresh Maple for this block.
           (progn
             (org-babel-eval
-             org-babel-maple-command
+             (org-babel-maple--command)
              (org-babel-maple--graphics-body body params graphics-file))
             graphics-file)
         (org-babel-maple--evaluate-session-graphics
@@ -119,7 +147,7 @@ instead of replacing.)  See `org-babel-maple--maybe-latex'."
       (org-babel-maple--maybe-latex
        (if (or (null session) (string= "none" session))
            ;; One-shot evaluation: spawn a fresh Maple for this block.
-           (org-babel-eval org-babel-maple-command
+           (org-babel-eval (org-babel-maple--command)
                            (org-babel-expand-body:maple body params))
          ;; Session evaluation: reuse the maplev pmaple REPL.
          (org-babel-maple--evaluate-session
