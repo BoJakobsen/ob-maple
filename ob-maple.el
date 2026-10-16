@@ -5,7 +5,7 @@
 ;; Author: Joseph S. Riel <joer@san.rr.com>
 ;;         Bo Jakobsen <boj@boj.dk>
 ;; Keywords: languages, tools
-;; Version: 1.0.0
+;; Version: 0.1.0
 ;; Package-Requires: ((maplev "3.2.0"))
 ;; URL: https://github.com/JoeRiel/ob-maple
 
