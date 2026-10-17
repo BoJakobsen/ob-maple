@@ -90,6 +90,19 @@ See `org-babel-maple-command'."
         (concat (shell-quote-argument maple) " "
                 org-babel-maple-command-options))))
 
+(defcustom org-babel-maple-session-init "interface(prettyprint=0):"
+  "Maple code sent once to each pmaple process used for session evaluation.
+It is sent after Maple has booted, i.e. after `maplev:-Setup' (which
+forces `prettyprint=1', 2D character output).  That is why passing
+`-c interface(prettyprint=0)' through the `:maple-options' slot of
+the maplev config does not help: Setup runs later and overrides it.
+The default restores 1D output, which is what Org expects in results.
+Set to nil or \"\" to send nothing."
+  :group 'org-babel
+  :group 'maplev
+  :type '(choice (const :tag "None" nil)
+                 (string :tag "Maple code")))
+
 (defcustom org-babel-maple-mode 'maplev-mode
   "Mode for use in running Maple interactively."
   :group 'org-babel
@@ -279,7 +292,23 @@ The session reuses the maplev pmaple machinery via
           ;; first `maplev-pmaple-direct' capture region, desynchronizing
           ;; output.
           (org-babel-maple--wait-for-prompt buffer)
+          (org-babel-maple--maybe-init-session buffer)
           buffer)))))
+
+(defun org-babel-maple--maybe-init-session (buffer)
+  "Send `org-babel-maple-session-init' to the pmaple process in BUFFER once.
+The flag is stored on the process itself, so a restarted Maple (new
+process, same buffer) is initialized again, and a buffer first started
+with \\[pmaple] is initialized on its first use from Org.  Must be
+called inside `org-babel-maple--with-session-buffer' for BUFFER."
+  (let ((proc (get-buffer-process buffer)))
+    (when (and proc
+               (not (process-get proc 'org-babel-maple-initialized))
+               org-babel-maple-session-init
+               (not (string-empty-p org-babel-maple-session-init)))
+      (with-current-buffer buffer
+        (maplev-pmaple-direct org-babel-maple-session-init))
+      (process-put proc 'org-babel-maple-initialized t))))
 
 (defun org-babel-maple--wait-for-prompt (buffer &optional timeout)
   "Block until the pmaple process in BUFFER is idle at a fresh prompt.
