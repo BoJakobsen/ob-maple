@@ -103,6 +103,16 @@ int(q*x,x);   # remembers p from the previous block
 : 8
 : 50*x^2
 
+* Parsing in variables
+
+#+begin_src maple :session foo :var a=2 b=5
+  b+a;
+#+end_src
+
+#+RESULTS:
+: 7
+
+
 * Inline graphics generation and inclusion
 
 Last command in a block needs to be the plot (or a variable contain a plot).
